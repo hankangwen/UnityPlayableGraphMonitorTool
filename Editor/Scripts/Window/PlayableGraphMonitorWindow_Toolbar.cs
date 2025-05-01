@@ -43,7 +43,7 @@ namespace GBG.PlayableGraphMonitor.Editor
         private ToolbarSearchField _searchField;
 
         // PlayableGraph popup
-        private PopupField<PlayableGraph> _graphPopupField;
+        private SearchablePopupField<PlayableGraph> _graphPopupField;
 
         // Inspector
         [SerializeField]
@@ -83,7 +83,7 @@ namespace GBG.PlayableGraphMonitor.Editor
             _toolbar.Add(_searchField);
 
             // Playable graph popup
-            _graphPopupField = new PopupField<PlayableGraph>(_graphs, 0,
+            _graphPopupField = new SearchablePopupField<PlayableGraph>(_graphs, 0,
                 GraphPopupFieldFormatter, GraphPopupFieldFormatter);
             _graphPopupField.RegisterValueChangedCallback(OnSelectedPlayableGraphChanged);
             _graphPopupField.Q<TextElement>(className: "unity-text-element").style.color = NormalTextColor;
