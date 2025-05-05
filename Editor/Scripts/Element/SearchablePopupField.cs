@@ -82,6 +82,12 @@ namespace GBG.PlayableGraphMonitor.Editor
 
         #region Block the default GenericMenu
 
+#if !UNITY_2021_1_OR_NEWER
+        protected override void ExecuteDefaultActionAtTarget(EventBase evt)
+        {
+        }
+#endif
+
 #if UNITY_2023_1_OR_NEWER
         [Obsolete]
         protected override void ExecuteDefaultAction(EventBase evt)
@@ -160,7 +166,7 @@ namespace GBG.PlayableGraphMonitor.Editor
 
             public override void OnGUI(Rect rect)
             {
-                const string SEARCH_CONTROL = "ToolbarSearchField";
+                const string SEARCH_CONTROL = "SearchablePopupField.PopupWindowContent.ToolbarSearchField";
 
                 EditorGUI.BeginChangeCheck();
                 {
@@ -253,30 +259,5 @@ namespace GBG.PlayableGraphMonitor.Editor
                 editorWindow.Close();
             }
         }
-    }
-
-    public static class EditorGUILayoutHelper
-    {
-        #region Reflection
-
-        private static Func<string, GUILayoutOption[], string> _toolbarSearchFieldCache;
-
-
-        public static string ToolbarSearchField(string searchText)
-        {
-            // string EditorGUILayout.ToolbarSearchField(string);
-            if (_toolbarSearchFieldCache == null)
-            {
-                MethodInfo toolbarSearchFieldMethod = typeof(EditorGUILayout).GetMethod("ToolbarSearchField", BindingFlags.Static | BindingFlags.NonPublic,
-                    null, new Type[] { typeof(string), typeof(GUILayoutOption[]) }, null);
-                Assert.IsNotNull(toolbarSearchFieldMethod);
-                _toolbarSearchFieldCache = (Func<string, GUILayoutOption[], string>)Delegate.CreateDelegate(typeof(Func<string, GUILayoutOption[], string>), toolbarSearchFieldMethod);
-            }
-
-            searchText = _toolbarSearchFieldCache(searchText, null);
-            return searchText;
-        }
-
-        #endregion
     }
 }

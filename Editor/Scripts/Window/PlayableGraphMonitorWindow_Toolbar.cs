@@ -1,14 +1,13 @@
-using GBG.PlayableGraphMonitor.Editor.Node;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using GBG.PlayableGraphMonitor.Editor.Node;
 using UnityEditor;
-using UnityEditor.Playables;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.Playables;
 using UnityEngine.UIElements;
-using UNode = UnityEditor.Experimental.GraphView.Node;
+
+// using UNode = UnityEditor.Experimental.GraphView.Node;
 
 
 namespace GBG.PlayableGraphMonitor.Editor
@@ -61,9 +60,8 @@ namespace GBG.PlayableGraphMonitor.Editor
         private TextElement _refreshRateLabel;
         private ToolbarButton _manualUpdateViewButton;
 
-        // Node selection
-        private ToolbarMenu _selectOutputNodeMenu;
-        private ToolbarMenu _selectRootNodeMenu;
+        // Node search
+        private ToolbarButton _searchNodeButton;
 
         // Common data
         private static Color NotableTextColor => Color.red;
@@ -84,8 +82,22 @@ namespace GBG.PlayableGraphMonitor.Editor
 
             // Playable graph popup
             _graphPopupField = new SearchablePopupField<PlayableGraph>(_graphs, 0,
-                GraphPopupFieldFormatter, GraphPopupFieldFormatter);
+                GraphPopupFieldFormatter, GraphPopupFieldFormatter)
+            {
+                style =
+                {
+                    marginTop = 0,
+                    marginBottom = 0,
+                }
+            };
             _graphPopupField.RegisterValueChangedCallback(OnSelectedPlayableGraphChanged);
+            VisualElement playableGraphPopupInput = _graphPopupField.Q<VisualElement>(className: SearchablePopupField<PlayableGraph>.inputUssClassName);
+            playableGraphPopupInput.style.borderTopLeftRadius = 0;
+            playableGraphPopupInput.style.borderTopRightRadius = 0;
+            playableGraphPopupInput.style.borderBottomLeftRadius = 0;
+            playableGraphPopupInput.style.borderBottomRightRadius = 0;
+            playableGraphPopupInput.style.borderTopWidth = 0;
+            playableGraphPopupInput.style.borderBottomWidth = 0;
             _graphPopupField.Q<TextElement>(className: "unity-text-element").style.color = NormalTextColor;
             _toolbar.Add(_graphPopupField);
             _toolbar.Add(new ToolbarSpacer());
@@ -115,11 +127,11 @@ namespace GBG.PlayableGraphMonitor.Editor
                 (_) =>
                 {
                     var @checked = _viewUpdateContext.ShowClipProgressBarTitle
-                    ? DropdownMenuAction.Status.Checked
-                    : DropdownMenuAction.Status.Normal;
+                        ? DropdownMenuAction.Status.Checked
+                        : DropdownMenuAction.Status.Normal;
                     var disabled = _viewUpdateContext.ShowClipProgressBar
-                    ? DropdownMenuAction.Status.Normal
-                    : DropdownMenuAction.Status.Disabled;
+                        ? DropdownMenuAction.Status.Normal
+                        : DropdownMenuAction.Status.Disabled;
                     return @checked | disabled;
                 });
             _toolbar.Add(clipProgressDropdownToggle);
@@ -141,7 +153,7 @@ namespace GBG.PlayableGraphMonitor.Editor
                 text = "Auto Layout",
                 value = _viewUpdateContext.AutoLayout,
                 tooltip = "If you want to drag nodes manually, disable 'Auto Layout' " +
-                          $"and set the max refresh rate to '{RefreshRate.Manual}'.",
+                    $"and set the max refresh rate to '{RefreshRate.Manual}'.",
             };
             _autoLayoutToggle.RegisterValueChangedCallback(ToggleAutoLayout);
             _autoLayoutLabel = _autoLayoutToggle.Q<TextElement>(className: "unity-text-element");
@@ -153,8 +165,20 @@ namespace GBG.PlayableGraphMonitor.Editor
             _refreshRateField = new EnumField(_refreshRate)
             {
                 tooltip = "Max refresh rate.",
+                style =
+                {
+                    marginTop = 0,
+                    marginBottom = 0,
+                }
             };
             _refreshRateField.RegisterValueChangedCallback(OnRefreshRateChanged);
+            VisualElement refreshRateInput = _refreshRateField.Q<VisualElement>(className: EnumField.inputUssClassName);
+            refreshRateInput.style.borderTopLeftRadius = 0;
+            refreshRateInput.style.borderTopRightRadius = 0;
+            refreshRateInput.style.borderBottomLeftRadius = 0;
+            refreshRateInput.style.borderBottomRightRadius = 0;
+            refreshRateInput.style.borderTopWidth = 0;
+            refreshRateInput.style.borderBottomWidth = 0;
             _refreshRateLabel = _refreshRateField.Q<TextElement>(className: "unity-text-element");
             _refreshRateLabel.style.color = _refreshRate != RefreshRate.Manual ? NormalTextColor : NotableTextColor;
             _toolbar.Add(_refreshRateField);
@@ -177,29 +201,27 @@ namespace GBG.PlayableGraphMonitor.Editor
             var frameAllButton = new ToolbarButton(OnFrameAllButtonClicked)
             {
                 text = "Frame All",
-                style = { flexShrink = 0 },
+                style =
+                {
+                    flexShrink = 0,
+                    unityTextAlign = TextAnchor.MiddleCenter,
+                },
             };
             frameAllButton.Q<TextElement>(className: "unity-text-element").style.color = NormalTextColor;
             _toolbar.Add(frameAllButton);
 
-            // Select output node
+            // Search nodes
             _toolbar.Add(new ToolbarSpacer());
-            _selectOutputNodeMenu = new ToolbarMenu
+            _searchNodeButton = new ToolbarButton(ShowSearchNodeWindow)
             {
-                text = "Select Output Node",
-                style = { flexShrink = 0 },
+                text = "Search Nodes",
+                style =
+                {
+                    flexShrink = 0,
+                    unityTextAlign = TextAnchor.MiddleCenter,
+                },
             };
-            _selectOutputNodeMenu.RegisterCallback<PointerEnterEvent>(OnHoverSelectOutputNodeMenu);
-            _toolbar.Add(_selectOutputNodeMenu);
-
-            // Select root node
-            _selectRootNodeMenu = new ToolbarMenu
-            {
-                text = "Select Root Node",
-                style = { flexShrink = 0 },
-            };
-            _selectRootNodeMenu.RegisterCallback<PointerEnterEvent>(OnHoverSelectRootNodeMenu);
-            _toolbar.Add(_selectRootNodeMenu);
+            _toolbar.Add(_searchNodeButton);
         }
 
         private string GraphPopupFieldFormatter(PlayableGraph graph)
@@ -318,67 +340,110 @@ namespace GBG.PlayableGraphMonitor.Editor
             _graphView.FrameAll();
         }
 
-        private void OnHoverSelectOutputNodeMenu(PointerEnterEvent evt)
+
+        #region Search Node
+
+        private void ShowSearchNodeWindow()
         {
-            _selectOutputNodeMenu.menu.MenuItems().Clear();
-
-            var playableGraph = _graphPopupField.value;
-            if (!playableGraph.IsValid())
+            SearchablePopupWindowContent<GraphViewNode>.Show(_searchNodeButton.worldBound, GetActiveNodes, target =>
             {
-                _selectOutputNodeMenu.menu.AppendAction("No PlayableOuput node", null,
-                    DropdownMenuAction.Status.Disabled);
-                return;
-            }
-
-            var nodeList = new List<UNode>();
-            _graphView.nodes.ToList(nodeList);
-            // _graphView.nodes.ToList() method returns nodes in random order,
-            // ensure that the menu items are ordered
-            var outputCount = playableGraph.GetOutputCount();
-            for (int i = 0; i < outputCount; i++)
-            {
-                var playableOutput = playableGraph.GetOutput(i);
-                var outputNode = nodeList.First(node =>
-                {
-                    if (node is PlayableOutputNode oNode)
-                    {
-                        return oNode.PlayableOutput.GetHandle() == playableOutput.GetHandle();
-                    }
-
-                    return false;
-                }) as PlayableOutputNode;
-
-                if (!outputNode.PlayableOutput.IsOutputValid())
-                {
-                    continue;
-                }
-
-                var nodeName = $"#{i} [{outputNode.PlayableOutput.GetEditorName()}]" +
-                    $" {outputNode.PlayableOutput.GetPlayableOutputType().Name}";
-                _selectOutputNodeMenu.menu.AppendAction(nodeName, _ =>
-                {
-                    _graphView.ClearSelection();
-                    _graphView.AddToSelection(outputNode);
-                    _graphView.FrameSelection();
-                });
-            }
-
-            if (outputCount == 0)
-            {
-                _selectOutputNodeMenu.menu.AppendAction("No PlayableOuput node", null,
-                    DropdownMenuAction.Status.Disabled);
-            }
+                _graphView.ClearSelection();
+                _graphView.AddToSelection(target);
+                _graphView.FrameSelection();
+            }, FormatGraphViewNodeSearchableName);
         }
 
-        private void OnHoverSelectRootNodeMenu(PointerEnterEvent evt)
+        private void GetActiveNodes(out IList<GraphViewNode> activeNodes, out int selectionIndex)
         {
-            _selectRootNodeMenu.menu.MenuItems().Clear();
+            activeNodes = (IList<GraphViewNode>)_graphView.ActiveNodes;
+            selectionIndex = -1;
+        }
+
+        private string FormatGraphViewNodeSearchableName(GraphViewNode node)
+        {
+            // Playable
+            if (node is PlayableNode playableNode)
+            {
+                Playable playable = playableNode.Playable;
+                string playableTypeName = playable.GetPlayableType().Name;
+                string handleHashCode = playable.GetHandle().GetHashCode().ToString();
+                switch (playableNode)
+                {
+                    case AnimationClipPlayableNode animClipPlayableNode:
+                    {
+                        AnimationClip animClip = animClipPlayableNode.GetAnimationClip();
+                        if (animClip)
+                            return $"{handleHashCode}\t{playableTypeName}\t{animClip.name}";
+                        return $"{handleHashCode}\t{playableTypeName}\tNone";
+                    }
+                    case AnimationScriptPlayableNode animScriptPlayableNode:
+                    {
+                        Type jobType = animScriptPlayableNode.GetJobType();
+                        return $"{handleHashCode}\t{playableTypeName}\t{jobType.Name}";
+                    }
+                    case AudioClipPlayableNode audioClipPlayableNode:
+                    {
+                        AudioClip audioClip = audioClipPlayableNode.GetAudioClip();
+                        if (audioClip)
+                            return $"{handleHashCode}\t{playableTypeName}\t{audioClip.name}";
+                        return $"{handleHashCode}\t{playableTypeName}\tNone";
+                    }
+                    default:
+                    {
+                        return $"{handleHashCode}\t{playableTypeName}";
+                    }
+                }
+            }
+
+            // PlayableOutput
+            if (node is PlayableOutputNode outputNode)
+            {
+                PlayableOutput output = outputNode.PlayableOutput;
+                string outputTypeName = output.GetPlayableOutputType().Name;
+                string handleHashCode = output.GetHandle().GetHashCode().ToString();
+                switch (outputNode)
+                {
+                    case AnimationPlayableOutputNode animOutput:
+                    {
+                        Animator animator = animOutput.GetAnimatorTarget();
+                        if (animator)
+                            return $"{handleHashCode}\t{outputTypeName}\t{animator.name}";
+                        return $"{handleHashCode}\t{outputTypeName}\tNone";
+                    }
+                    case AudioPlayableOutputNode audioOutput:
+                    {
+                        AudioSource audioSource = audioOutput.GetAudioSourceTarget();
+                        if (audioSource)
+                            return $"{handleHashCode}\t{outputTypeName}\t{audioSource.name}";
+                        return $"{handleHashCode}\t{outputTypeName}\tNone";
+                    }
+                    case TexturePlayableOutputNode texOutput:
+                    {
+                        RenderTexture rt = texOutput.GetRenderTextureTarget();
+                        if (rt)
+                            return $"{handleHashCode}\t{outputTypeName}\t{rt.name}";
+                        return $"{handleHashCode}\t{outputTypeName}\tNone";
+                    }
+                    default:
+                    {
+                        return $"{handleHashCode}\t{outputTypeName}";
+                    }
+                }
+            }
+
+            Debug.LogError($"Unknown GraphViewNode type: {node.GetType().Name}.");
+            return node.ToString();
+        }
+
+        /*
+        private void PopulateRootNodeDropdownMenu(GenericMenu menu)
+        {
+            const string ROOT_NODES = "Root Playable Nodes";
 
             var playableGraph = _graphPopupField.value;
             if (!playableGraph.IsValid())
             {
-                _selectRootNodeMenu.menu.AppendAction("No root Playable node", null,
-                    DropdownMenuAction.Status.Disabled);
+                menu.AddDisabledItem(new GUIContent("No Root Playable Node"));
                 return;
             }
 
@@ -409,7 +474,7 @@ namespace GBG.PlayableGraphMonitor.Editor
                     ? $"#{i} [{playableNode.ExtraLabel}] {playableNode.Playable.GetPlayableType().Name}"
                     : $"#{i} {playableNode.Playable.GetPlayableType().Name}";
 
-                _selectRootNodeMenu.menu.AppendAction(nodeName, _ =>
+                menu.AddItem(new GUIContent($"{ROOT_NODES}/{nodeName}"), false, () =>
                 {
                     _graphView.ClearSelection();
                     _graphView.AddToSelection(playableNode);
@@ -419,9 +484,61 @@ namespace GBG.PlayableGraphMonitor.Editor
 
             if (rootPlayableCount == 0)
             {
-                _selectRootNodeMenu.menu.AppendAction("No root Playable node", null,
-                    DropdownMenuAction.Status.Disabled);
+                menu.AddDisabledItem(new GUIContent("No Root Playable Node"));
             }
         }
+
+        private void PopulateOutputNodeDropdownMenu(GenericMenu menu)
+        {
+            const string OUTPUT_NODES = "PlayableOutput Nodes";
+
+            var playableGraph = _graphPopupField.value;
+            if (!playableGraph.IsValid())
+            {
+                menu.AddDisabledItem(new GUIContent("No PlayableOutput Node"));
+                return;
+            }
+
+            var nodeList = new List<UNode>();
+            _graphView.nodes.ToList(nodeList);
+            // _graphView.nodes.ToList() method returns nodes in random order,
+            // ensure that the menu items are ordered
+            var outputCount = playableGraph.GetOutputCount();
+            for (int i = 0; i < outputCount; i++)
+            {
+                var playableOutput = playableGraph.GetOutput(i);
+                var outputNode = nodeList.First(node =>
+                {
+                    if (node is PlayableOutputNode oNode)
+                    {
+                        return oNode.PlayableOutput.GetHandle() == playableOutput.GetHandle();
+                    }
+
+                    return false;
+                }) as PlayableOutputNode;
+
+                if (!outputNode.PlayableOutput.IsOutputValid())
+                {
+                    continue;
+                }
+
+                var nodeName = $"#{i} [{outputNode.PlayableOutput.GetEditorName()}]" +
+                    $" {outputNode.PlayableOutput.GetPlayableOutputType().Name}";
+                menu.AddItem(new GUIContent($"{OUTPUT_NODES}/{nodeName}"), false, () =>
+                {
+                    _graphView.ClearSelection();
+                    _graphView.AddToSelection(outputNode);
+                    _graphView.FrameSelection();
+                });
+            }
+
+            if (outputCount == 0)
+            {
+                menu.AddDisabledItem(new GUIContent("No PlayableOutput Node"));
+            }
+        }
+        */
+
+        #endregion
     }
 }
