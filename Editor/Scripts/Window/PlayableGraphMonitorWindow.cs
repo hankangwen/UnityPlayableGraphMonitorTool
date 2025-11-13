@@ -22,6 +22,14 @@ namespace GBG.PlayableGraphMonitor.Editor
             return GetWindow<PlayableGraphMonitorWindow>("Playable Graph Monitor");
         }
 
+        public static PlayableGraphMonitorWindow Open(PlayableGraph graph)
+        {
+            var window = Open();
+            _instance._graphPopupField.value = graph;
+            _instance.UpdatePlayableGraphPopupField();
+            return window;
+        }
+
         public static PlayableGraphMonitorWindow Open(IReadOnlyDictionary<PlayableHandle, string> nodeExtraLabelTable)
         {
             var window = Open();
@@ -237,4 +245,5 @@ namespace GBG.PlayableGraphMonitor.Editor
 
         #endregion
     }
+
 }
